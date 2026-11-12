@@ -20,7 +20,7 @@ report:
 	uv run python scripts/build_report.py
 
 quick:
-	uv run python scripts/run_experiments.py --seeds 3 --budget 200 --out build/quick
+	uv run python scripts/run_experiments.py --seeds 4 --players 8 --budget 300 --out build/quick --card build/quick/card.json --allow-dirty
 	uv run python scripts/build_report.py --results build/quick/results.json --out build/quick/index.html
 
 all: lint typecheck test results report

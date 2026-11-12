@@ -97,3 +97,18 @@ def test_missing_results_fails_loudly(tmp_path: Path) -> None:
     )
     assert proc.returncode != 0
     assert "make results" in proc.stderr
+
+
+def test_readme_numbers_match_results() -> None:
+    # The README tables are hand-written; this keeps them tied to the committed run.
+    readme = (ROOT / "README.md").read_text()
+    results = json.loads((ROOT / "results" / "results.json").read_text())
+    for c in results["systems"] + results["strategies"]:
+        assert f"| {c['final_tau']:.3f} |" in readme
+        cal = c["calibration"]
+        if c["strategy"] == "random":
+            assert f"| {cal['log_loss']:.4f} |" in readme
+            assert f"| {cal['ece']:.4f} |" in readme
+    assert results["meta"]["sha"][:7] in readme
+    card = json.loads((ROOT / "site" / "card.json").read_text())
+    assert f"saves {card['metric']['value']} comparisons" in readme

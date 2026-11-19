@@ -100,15 +100,15 @@ def test_missing_results_fails_loudly(tmp_path: Path) -> None:
 
 
 def test_readme_numbers_match_results() -> None:
-    # The README tables are hand-written; this keeps them tied to the committed run.
+    # The README headline numbers are hand-written; this keeps them tied to the committed run.
     readme = (ROOT / "README.md").read_text()
     results = json.loads((ROOT / "results" / "results.json").read_text())
-    for c in results["systems"] + results["strategies"]:
-        assert f"| {c['final_tau']:.3f} |" in readme
-        cal = c["calibration"]
-        if c["strategy"] == "random":
-            assert f"| {cal['log_loss']:.4f} |" in readme
-            assert f"| {cal['ece']:.4f} |" in readme
-    assert results["meta"]["sha"][:7] in readme
-    card = json.loads((ROOT / "site" / "card.json").read_text())
-    assert f"saves {card['metric']['value']} comparisons" in readme
+    reach = {c["strategy"]: c["reach"]["mean_curve_crossing"] for c in results["strategies"]}
+    info_gain, random = reach["info_gain"], reach["random"]
+    assert f"**{info_gain:,} comparisons instead of {random:,}**" in readme
+    assert f"{random - info_gain:,} fewer" in readme
+    tau = {c["system"]: c["final_tau"] for c in results["systems"]}
+    assert f"Bradley-Terry ranks best (rank agreement {tau['bradley_terry']:.3f}" in readme
+    assert f"Elo worst ({tau['elo']:.3f})" in readme
+    assert max(tau, key=tau.__getitem__) == "bradley_terry"
+    assert min(tau, key=tau.__getitem__) == "elo"

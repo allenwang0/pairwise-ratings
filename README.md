@@ -1,74 +1,30 @@
 # pairwise-ratings
 
-Elo, Glicko-2 and Bradley-Terry maximum likelihood compared on simulated pairwise comparisons, plus four rules for choosing which pair to compare next, scored by how fast each recovers a known ranking and how honest its win probabilities are.
+If you can only ask "which of these two is better?", how fast can you recover the true ranking, and which pairs should you ask about? This project compares Elo, Glicko-2 and Bradley-Terry on simulated head-to-head data and tests four rules for picking the next pair.
 
-![Report: Kendall tau against comparisons for three rating systems and four pair-selection strategies](docs/report.png)
+![Ranking accuracy against number of comparisons for three rating systems and four pair-selection strategies](docs/report.png)
 
-The report is `site/index.html`, a single static page with inline SVG charts, hover readouts, a Kendall tau / Spearman rho toggle and data tables. All data in it is simulated.
+## Highlights
 
-## Results
-
-Setup: 32 synthetic players with skill drawn from N(0, 1) on the logit scale, outcomes drawn from the Bradley-Terry model, 1280 comparisons per run, seeds 0 to 99. Every condition with the same seed faces the same players. Numbers below come from `results/results.json` at commit `bc84bdc`.
-
-Pair selection, all with Glicko-2 as the rating system:
-
-| Strategy | Mean tau after 1280 | Mean curve reaches tau 0.8 at | Per-seed median to tau 0.8 (IQR) | Seeds that never reach 0.8 |
-|---|---|---|---|---|
-| Info gain | 0.857 | 740 | 670 (472.5 to 847.5) | 6 of 100 |
-| Closest | 0.827 | 870 | 650 (447.5 to 912.5) | 20 of 100 |
-| Random | 0.819 | 1010 | 700 (560 to 885) | 9 of 100 |
-| Uncertainty | 0.794 | never | 640 (495 to 840) | 25 of 100 |
-
-Info-gain pairing gets the mean Kendall tau to 0.8 after 740 comparisons; random pairing needs 1010, so it saves 270 comparisons (27%). At 1280 comparisons the 95% confidence intervals of the mean do not overlap: info gain 0.849 to 0.865, random 0.812 to 0.827. The per-seed medians barely differ; what separates the strategies is how many seeds stall. Uncertainty and closest-match pairing both leave more seeds short of 0.8 than random pairing does.
-
-Rating systems under random pairing:
-
-| System | Mean tau after 1280 | Log loss | Brier | ECE | Mean abs. error vs true p |
-|---|---|---|---|---|---|
-| Bradley-Terry MLE | 0.841 | 0.5764 | 0.1963 | 0.0266 | 0.0877 |
-| Glicko-2 | 0.819 | 0.5798 | 0.1975 | 0.0367 | 0.0926 |
-| Elo (K = 32) | 0.792 | 0.5814 | 0.1988 | 0.0261 | 0.1035 |
-
-The oracle log loss, scoring the true simulated probabilities, is 0.5376, so no system can do better than that on average. The reliability diagram in the report shows Glicko-2 and Bradley-Terry are overconfident at the extremes (predicted 0.06, observed about 0.09 to 0.10), while Elo is slightly underconfident there.
-
-Glicko-2 reproduces Glickman's worked example (player 1500 / 200 / 0.06, tau 0.5, one win and two losses): rating 1464.0507, RD 151.5165, volatility 0.059996 against the paper's printed 1464.06, 151.52 and 0.05999. The 0.0093-point gap in rating comes from the paper rounding its intermediate steps.
-
-## How it works
-
-Rating systems (`src/pairwise_ratings/`):
-
-- `elo.py`: expected score 1 / (1 + 10^((Rb - Ra) / 400)), K = 32.
-- `glicko2.py`: steps 1 to 8 of Glickman, "Example of the Glicko-2 system" (2013), with the Illinois regula falsi solver for volatility. Predictions use the combined deviation g(sqrt(phi_a^2 + phi_b^2)) from Glickman (1999).
-- `bradley_terry.py`: maximum likelihood by Hunter's MM algorithm (Hunter 2004). Each player gets one virtual win and one virtual loss against a fixed player of strength 1, which keeps unbeaten players finite. In the simulation it is refit every 10 comparisons and predicts from the latest fit.
-
-Pair selection (`selection.py`):
-
-- random: a uniform unordered pair.
-- uncertainty: the player with the largest Glicko-2 deviation against a random opponent. Pairing the two most uncertain players instead locks into a small set of repeated pairs, because after one round every deviation is nearly equal.
-- closest: the pair with the largest p(1 - p), the most even predicted match.
-- info gain: the pair whose comparison shrinks total Glicko-2 variance the most. For player i the update gives 1/phi'^2 = 1/phi*^2 + g(phi_j)^2 E(1 - E) whatever the outcome, so the reduction phi*^2 - phi'^2 is known before the comparison. The score is that reduction summed over both players. With equal deviations it picks the same pair as closest.
-
-Accuracy is Kendall tau-b and Spearman rho of the estimated ratings against true skill, every 10 comparisons. Bands are mean plus or minus 1.96 standard errors over seeds. Calibration is computed over every pre-comparison prediction: log loss, Brier score and expected calibration error over 10 equal-width bins.
+- Choosing pairs by expected information gain reaches the target ranking accuracy (Kendall tau 0.8) in **740 comparisons instead of 1,010** for random pairs. It saves 270 comparisons, 27% fewer.
+- The intuitive alternatives backfire: pairing the most uncertain player, or the most even matchup, leaves more runs stuck below the target than random pairing does.
+- Bradley-Terry maximum likelihood ranks best (tau 0.841) and has the most accurate win probabilities; Elo ranks worst (0.792).
+- Glicko-2 is implemented from Glickman's paper and reproduces its worked example to within 0.01 rating points.
+- 25 tests, including Hypothesis property tests; `mypy --strict` and ruff in CI.
 
 ## Quickstart
 
-Requires [uv](https://docs.astral.sh/uv/) and make. uv installs Python 3.12 if needed.
+Requires [uv](https://docs.astral.sh/uv/) and make.
 
 ```sh
-make setup     # uv sync --frozen
-make test      # 25 tests, including Hypothesis property tests
-make lint      # ruff check and format check
-make typecheck # mypy --strict
-make results   # 100 seeds, about 1 minute on a 15-core laptop; writes results/results.json and site/card.json
-make report    # writes site/index.html from results/results.json
-make quick     # 4 seeds, 8 players, into build/quick, for a fast end-to-end check
+make setup     # install pinned dependencies
+make test
+make results   # 100 seeds, about 1 minute on a 15-core laptop
+make report    # writes site/index.html, an interactive version of the chart above
+make quick     # 4 seeds, 8 players, for a fast end-to-end check
 ```
 
-`make results` refuses to run with uncommitted changes under `src/`, `scripts/`, `pyproject.toml` or `uv.lock`, so the commit recorded in the results is the code that produced them. Pass `--allow-dirty` to run anyway; the report then says so.
-
-`site/card.json` is a summary for a portfolio page: the comparisons saved by info-gain pairing, a takeaway sentence and the tau curves, validated by a test against `tests/card.schema.json`.
-
-## Library use
+As a library:
 
 ```python
 import numpy as np
@@ -85,22 +41,56 @@ for _ in range(12):
 print(model.ratings().round(0), model.rds().round(0))
 ```
 
-## Tests
+## Results
 
-- Glicko-2 against the paper's example, and the idle-player case.
-- Property tests with Hypothesis: a Glicko-2 win never lowers a rating and a loss never raises one; the new deviation never exceeds sqrt(phi^2 + sigma'^2); all values stay finite; win probabilities lie in (0, 1) and p(a, b) + p(b, a) = 1; Elo conserves total rating for any K; a ranking compared with itself has tau 1.
-- Bradley-Terry recovers 8 strengths from 20,000 comparisons with correlation above 0.99 and keeps an unbeaten player finite.
-- Selection rules, seeded reproducibility, common random numbers across conditions, and counting seeds that never reach the target.
-- The report builds with every view and no NaN, `card.json` validates against the schema, and the committed card agrees with the committed results.
+Each run has 32 players with skill drawn from N(0, 1) on the logit scale, outcomes drawn from the Bradley-Terry model, and 1,280 comparisons. There are 100 seeds, and every condition with the same seed faces the same players. Numbers come from `results/results.json`, produced at commit `bc84bdc`.
+
+**Pair selection** (all using Glicko-2):
+
+| Strategy | Mean tau after 1280 | Mean curve reaches tau 0.8 at | Per-seed median to tau 0.8 (IQR) | Seeds that never reach 0.8 |
+|---|---|---|---|---|
+| Info gain | 0.857 | 740 | 670 (472.5 to 847.5) | 6 of 100 |
+| Closest | 0.827 | 870 | 650 (447.5 to 912.5) | 20 of 100 |
+| Random | 0.819 | 1010 | 700 (560 to 885) | 9 of 100 |
+| Uncertainty | 0.794 | never | 640 (495 to 840) | 25 of 100 |
+
+At 1,280 comparisons the 95% confidence intervals don't overlap: info gain 0.849 to 0.865, random 0.812 to 0.827. The per-seed medians are close. What separates the strategies is how many seeds stall.
+
+**Rating systems** (all using random pairs):
+
+| System | Mean tau after 1280 | Log loss | Brier | ECE | Mean abs. error vs true p |
+|---|---|---|---|---|---|
+| Bradley-Terry MLE | 0.841 | 0.5764 | 0.1963 | 0.0266 | 0.0877 |
+| Glicko-2 | 0.819 | 0.5798 | 0.1975 | 0.0367 | 0.0926 |
+| Elo (K = 32) | 0.792 | 0.5814 | 0.1988 | 0.0261 | 0.1035 |
+
+The best possible log loss, scoring the true probabilities, is 0.5376. Glicko-2 and Bradley-Terry are overconfident at the extremes (predicted 0.06, observed about 0.09 to 0.10); Elo is slightly underconfident there.
+
+**Glicko-2 check.** On Glickman's worked example (player 1500 / 200 / 0.06, tau 0.5, one win and two losses) this code gives rating 1464.0507, RD 151.5165, volatility 0.059996, against the paper's 1464.06, 151.52 and 0.05999. The 0.0093-point rating gap comes from the paper rounding intermediate steps.
+
+## How it works
+
+Rating systems (`src/pairwise_ratings/`):
+
+- `elo.py`: expected score 1 / (1 + 10^((Rb - Ra) / 400)), K = 32.
+- `glicko2.py`: steps 1 to 8 of Glickman, "Example of the Glicko-2 system" (2013), with the Illinois regula falsi solver for volatility. Predictions use the combined deviation g(sqrt(phi_a^2 + phi_b^2)) from Glickman (1999).
+- `bradley_terry.py`: maximum likelihood via Hunter's MM algorithm (Hunter 2004). Each player gets one virtual win and one virtual loss against a fixed reference player, which keeps unbeaten players finite. Refit every 10 comparisons.
+
+Pair selection (`selection.py`):
+
+- **random**: a uniform unordered pair.
+- **uncertainty**: the player with the largest Glicko-2 deviation against a random opponent.
+- **closest**: the pair with the largest p(1 - p), the most even predicted match.
+- **info gain**: the pair whose comparison shrinks total Glicko-2 variance the most. For player i the update gives 1/phi'^2 = 1/phi*^2 + g(phi_j)^2 E(1 - E) whatever the outcome, so the reduction is known before the match is played. The score sums it over both players. With equal deviations it picks the same pair as closest.
+
+Accuracy is Kendall tau-b and Spearman rho of estimated ratings against true skill, measured every 10 comparisons; bands are mean ± 1.96 standard errors over seeds. Calibration uses every pre-comparison prediction: log loss, Brier score, and expected calibration error over 10 equal-width bins.
 
 ## Limitations
 
-- Skills are fixed. Glicko-2's volatility exists for skills that drift, which this simulation does not test.
-- Outcomes follow the same logistic model all three systems assume. There is no test of misspecified noise.
-- Each comparison is its own Glicko-2 rating period and only the two players update. Glickman intends periods of several games with deviation growth for absent players.
-- Only Glicko-2 is paired with the active strategies; Elo has no deviation to drive them.
-- One pool size and skill spread. Gains from active selection depend on both.
-- Chart text is about 10 px on a 375 px phone because the SVGs scale to the page width.
+- Skills are fixed, so Glicko-2's volatility, which exists for drifting skill, goes untested.
+- Outcomes follow the same logistic model all three systems assume; misspecified noise is not tested.
+- Each comparison is its own Glicko-2 rating period, unlike Glickman's multi-game periods.
+- One pool size (32) and skill spread; gains from active selection depend on both.
 
 ## License
 

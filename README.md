@@ -6,9 +6,9 @@ If all you can ask is "which of these two is better?", how fast can you recover 
 
 ## Highlights
 
-- Picking which pair to compare next by information gain reaches the same ranking accuracy in **740 comparisons instead of 1,010** for random pairs: 270 fewer.
+- Averaged over 100 simulated runs of 32 players, picking which pair to compare next by information gain reaches the same ranking accuracy in **740 comparisons instead of 1,010** for random pairs: 270 fewer.
 - The intuitive shortcuts backfire: always asking about the least-known player, or the most even matchup, leaves more runs stuck short of the target than random pairing.
-- Bradley-Terry ranks best (rank agreement 0.841 out of 1) and Elo worst (0.792).
+- After 1,280 random comparisons, Bradley-Terry ranks best (rank agreement 0.841 out of 1) and Elo worst (0.792).
 - Glicko-2 is written from Glickman's paper and reproduces its worked example to within 0.01 rating points.
 
 ## Run it
@@ -19,7 +19,7 @@ Requires [uv](https://docs.astral.sh/uv/) and make.
 make setup     # install pinned dependencies
 make test
 make results   # 100 simulated runs, about 1 minute
-make report    # interactive version of the chart above
+make report    # interactive version of the chart above, written to site/index.html
 ```
 
 ## How it works

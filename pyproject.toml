@@ -20,6 +20,7 @@ packages = ["src/pairwise_ratings"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["report-kit"]  # vendored byte-identical; checked by report-kit/check_kit.py
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "NPY"]
@@ -29,7 +30,7 @@ strict = true
 files = ["src", "scripts", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["scipy.*", "jsonschema.*"]
+module = ["scipy.*", "jsonschema.*", "report_kit"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

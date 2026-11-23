@@ -29,14 +29,20 @@ def band(values: NDArray[np.float64]) -> dict[str, list[float]]:
 def comparisons_to_target(
     tau: NDArray[np.float64], checkpoints: NDArray[np.int64], target: float = TAU_TARGET
 ) -> dict[str, Any]:
-    """Per seed, the first checkpoint with tau >= target. Seeds that never reach it are counted."""
+    """Per seed, the first checkpoint with tau >= target. Seeds that never reach it are counted.
+
+    per_seed keeps every seed's value in seed order (None = never reached) so reports can show
+    the distribution and pair seeds across conditions, which share players seed for seed.
+    """
     hit = tau >= target
     reached = hit.any(axis=1)
-    first = checkpoints[hit.argmax(axis=1)][reached]
+    all_first = checkpoints[hit.argmax(axis=1)]
+    first = all_first[reached]
     out: dict[str, Any] = {
         "target": target,
         "seeds": int(tau.shape[0]),
         "never": int((~reached).sum()),
+        "per_seed": [int(v) if ok else None for v, ok in zip(all_first, reached, strict=True)],
     }
     if first.size:
         q1, med, q3 = np.percentile(first, [25, 50, 75])
@@ -75,6 +81,7 @@ def run_condition(system: str, strategy: str, config: Config, seeds: range) -> d
         "tau": band(tau),
         "rho": band(rho),
         "final_tau": round(float(tau[:, -1].mean()), 4),
+        "final_tau_per_seed": tau[:, -1].round(5).tolist(),
         "reach": comparisons_to_target(tau, checkpoints),
         "calibration": calibration(runs),
     }

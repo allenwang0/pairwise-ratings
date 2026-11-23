@@ -47,7 +47,6 @@ BOOT_SAMPLES = 10_000
 BOOT_SEED = 0
 README_START = "<!-- results:start -->"
 README_END = "<!-- results:end -->"
-THIN = " "
 
 
 # ---------------------------------------------------------------- statistics
@@ -571,15 +570,6 @@ def prose(content: Any) -> Any:
     return rk.tag("p", content, class_="prose")
 
 
-def toc(items: list[tuple[str, str]]) -> Any:
-    """Tier B inline contents list: the kit's nav style, not sticky."""
-    lis = rk.join(Raw(f"<li>{rk.tag('a', label, href='#' + sid)}</li>") for sid, label in items)
-    return Raw(
-        '<nav class="report-nav" aria-label="Contents" style="position:static">'
-        f"<ul>{lis}</ul></nav>"
-    )
-
-
 def build(results: dict[str, Any], res_sha: str) -> str:
     d = derive(results)
     m, s, box, boot = d["meta"], d["systems"], d["boxes"], d["boot"]
@@ -633,7 +623,7 @@ def build(results: dict[str, Any], res_sha: str) -> str:
         ),
     )
 
-    nav = toc(
+    nav = rk.toc(
         [
             ("findings", "Findings"),
             ("setup", "Setup"),

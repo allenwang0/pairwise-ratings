@@ -1,8 +1,8 @@
 # pairwise-ratings
 
-If all you can ask is "which of these two is better?", how fast can you recover the true ranking, and which pair should you ask about next? This project answers that with simulations of Elo, Glicko-2 and Bradley–Terry ratings and four rules for picking pairs. All players are simulated, not real.
+If all you can ask is "which of these two is better?", how fast can you recover the true ranking, and which pair should you ask about next? Simulations of Elo, Glicko-2 and Bradley–Terry with four pair-picking rules; all players are simulated.
 
-**[Read the report →](https://allenwang0.github.io/pairwise-ratings/)** (per-run distributions, bootstrap interval, every number linked to its source)
+**[Read the report →](https://allenwang0.github.io/pairwise-ratings/)**
 
 ![Ranking accuracy against number of comparisons for Elo, Glicko-2 and Bradley–Terry](docs/report.png)
 
@@ -28,13 +28,13 @@ make report    # rebuild site/index.html and this README's highlights
 
 ## How it works
 
-- Each run hides a skill for every player, then simulates matches whose outcomes follow the Bradley–Terry model.
+- Each run hides a skill per player and simulates matches from the Bradley–Terry model.
 - Elo, Glicko-2 and Bradley–Terry each estimate the skills from who won.
 - Ranking accuracy is Kendall τ against the hidden skills: 1 is perfect, 0 is chance.
-- The information-gain rule picks the pair whose result would shrink Glicko-2's total uncertainty the most, an amount known before the match is played.
+- Information gain picks the pair whose result would most shrink Glicko-2's total uncertainty.
 
 ## Limitations
 
 - Skills stay fixed, so tracking players who improve or decline is untested.
-- Outcomes follow the model Bradley–Terry assumes, which favours it; real data is noisier.
+- Outcomes follow Bradley–Terry's own model, which favours it.
 - One pool size; the value of smart pairing depends on it.

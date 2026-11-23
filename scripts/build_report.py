@@ -16,6 +16,7 @@ import argparse
 import json
 import math
 import random
+import re
 import statistics
 import subprocess
 import sys
@@ -177,6 +178,27 @@ def derive(results: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def glickman_inputs() -> dict[str, Any]:
+    """Inputs of the worked example, read from the script that runs it (never retyped here)."""
+    src = (ROOT / "scripts" / "run_experiments.py").read_text(encoding="utf-8")
+    body = src[src.index("def glickman_example") :]
+    body = body[: body.index("return")]
+    opponents = re.findall(r"Rating\((\d+), \d+\), [\d.]+\)", body)
+    player = re.search(r"rate\(Rating\((\d+), (\d+), ([\d.]+)\), games, tau=([\d.]+)\)", body)
+    if not player or len(opponents) != 3:
+        raise ValueError("glickman_example() inputs not found in scripts/run_experiments.py")
+    return {"player": player.groups()[:3], "tau": player.group(4), "opponents": opponents}
+
+
+def z95() -> str:
+    """The band multiplier used by the experiment, read from its source."""
+    src = (ROOT / "src" / "pairwise_ratings" / "experiment.py").read_text(encoding="utf-8")
+    match = re.search(r"^Z95 = ([\d.]+)$", src, re.M)
+    if not match:
+        raise ValueError("Z95 not found in src/pairwise_ratings/experiment.py")
+    return match.group(1)
+
+
 def git_last_commit(rel: str) -> str | None:
     try:
         out = subprocess.run(
@@ -202,10 +224,17 @@ def line_of(rel: str, needle: str, end: str | None = None) -> tuple[int, int]:
 # ---------------------------------------------------------------- charts
 
 
-def tau_chart(d: dict[str, Any], uid: str, width: int, height: int, keys: list[str]) -> Any:
+def tau_chart(
+    d: dict[str, Any], uid: str, width: int, height: int, keys: list[str], step: int = 1
+) -> Any:
     """Mean Kendall tau by comparisons with the 95% band of the mean; one accent series."""
-    x = d["x"]
-    series = [(k, d["systems"][k]["tau"]) for k in keys]
+    # step > 1 thins the checkpoints (always keeping the last) for small variants
+    idx = sorted(set(range(step - 1, len(d["x"]), step)) | {len(d["x"]) - 1})
+    x = [d["x"][i] for i in idx]
+    series = [
+        (k, {b: [d["systems"][k]["tau"][b][i] for i in idx] for b in ("mean", "lo", "hi")})
+        for k in keys
+    ]
     narrow = width < 420
     label_w = max(rk.text_width(NAMES[k], 12 if narrow else 13) for k in keys) + 14
     ml, mr, mt, mb = 40, label_w, 30, 46
@@ -268,10 +297,11 @@ def tau_chart(d: dict[str, Any], uid: str, width: int, height: int, keys: list[s
         )
     )
     parts.append(rk.svg_text(width - mr, height - 8, "Comparisons played", "c-title", "end"))
+    q = len(d["x"]) // 4 - 1  # a quarter of the budget, from the full series
     desc = "; ".join(
-        f"{NAMES[k]}: τ {tau3(b['mean'][len(x) // 4 - 1])} at {x[len(x) // 4 - 1]}, "
-        f"{tau3(b['mean'][-1])} at {x[-1]}"
-        for k, b in series
+        f"{NAMES[k]}: τ {tau3(d['systems'][k]['tau']['mean'][q])} at {d['x'][q]}, "
+        f"{tau3(d['systems'][k]['tau']['mean'][-1])} at {d['x'][-1]}"
+        for k in keys
     )
     return rk.svg(
         uid,
@@ -291,10 +321,10 @@ def box_chart(d: dict[str, Any], uid: str, width: int) -> Any:
     narrow = width < 420
     name_w = 0 if narrow else max(rk.text_width(NAMES[k]) for k in order) + 16
     never_w = 78 if not narrow else 58
-    plot_l, plot_r = name_w, width - never_w - 8
+    plot_l, plot_r = name_w or 12, width - never_w - 8
     row_h = 58 if narrow else 44
     top = 26
-    xt = [t for t in rk.nice_ticks(0, budget, 4 if narrow else 6) if t <= budget]
+    xt = [t for t in rk.nice_ticks(0, budget, 4 if narrow else 8) if t <= budget]
 
     def x(v: float) -> float:
         return float(plot_l + (plot_r - plot_l) * v / budget)
@@ -322,13 +352,16 @@ def box_chart(d: dict[str, Any], uid: str, width: int) -> Any:
                 )
             )
         parts.append(f'<g data-row="{esc(k)}">')
-        for v in d["reach"][k]:
-            if math.isfinite(v):
-                parts.append(
-                    f'<circle cx="{rk.coord(x(v))}" cy="{rk.coord(cy + rng.uniform(-7, 7))}" '
-                    'r="1.8" '
-                    f'class="c-muted" style="fill-opacity:.55"/>'
-                )
+        # one dot per run, drawn as zero-length round-capped strokes in one path (small page)
+        dots = "".join(
+            f"M{rk.coord(x(v))} {rk.coord(cy + rng.uniform(-7, 7))}h0"
+            for v in d["reach"][k]
+            if math.isfinite(v)
+        )
+        parts.append(
+            f'<path d="{dots}" style="stroke:var(--data-muted);stroke-width:3.6;'
+            'stroke-linecap:round;stroke-opacity:.6;fill:none"/>'
+        )
         q3 = b["q3"] if math.isfinite(b["q3"]) else budget
         bw = max(x(q3) - x(b["q1"]), 1)
         stroke = "c-stroke-accent" if accent else "c-stroke-muted"
@@ -352,7 +385,8 @@ def box_chart(d: dict[str, Any], uid: str, width: int) -> Any:
             )
         )
         parts.append("</g>")
-    parts.append(f'<path class="c-axis" d="M{rk.coord(plot_l)} {top - 8}V{rk.coord(bottom)}"/>')
+    if not narrow:  # on a phone the labels sit above the rows, where an axis line would cross them
+        parts.append(f'<path class="c-axis" d="M{rk.coord(plot_l)} {top - 8}V{rk.coord(bottom)}"/>')
     parts.append(
         rk.svg_text(
             plot_r,
@@ -532,6 +566,11 @@ def evidence_rows(
     ]
 
 
+def prose(content: Any) -> Any:
+    """Body paragraph held to the reading measure."""
+    return rk.tag("p", content, class_="prose")
+
+
 def toc(items: list[tuple[str, str]]) -> Any:
     """Tier B inline contents list: the kit's nav style, not sticky."""
     lis = rk.join(Raw(f"<li>{rk.tag('a', label, href='#' + sid)}</li>") for sid, label in items)
@@ -586,9 +625,9 @@ def build(results: dict[str, Any], res_sha: str) -> str:
                     class_="card-label",
                 ),
                 rk.variants(
-                    tau_chart(d, "hero-d", 398, 300, ["elo", "glicko2", "bradley_terry"]),
-                    tau_chart(d, "hero-t", 640, 320, ["elo", "glicko2", "bradley_terry"]),
-                    tau_chart(d, "hero-p", 300, 260, ["elo", "glicko2", "bradley_terry"]),
+                    tau_chart(d, "hero-d", 398, 300, ["elo", "glicko2", "bradley_terry"], 2),
+                    tau_chart(d, "hero-t", 640, 320, ["elo", "glicko2", "bradley_terry"], 2),
+                    tau_chart(d, "hero-p", 300, 260, ["elo", "glicko2", "bradley_terry"], 4),
                 ),
             ]
         ),
@@ -706,7 +745,9 @@ def build(results: dict[str, Any], res_sha: str) -> str:
                 4,
                 rk.join(
                     [
-                        rk.tag("h3", "Best final ranking overall", class_="card-heading"),
+                        rk.tag(
+                            "h3", "Information-gain pairs end more accurate", class_="card-heading"
+                        ),
                         rk.metric(
                             "Kendall τ, Glicko-2 with information-gain pairs", tau3(ig_final)
                         ),
@@ -758,8 +799,7 @@ def build(results: dict[str, Any], res_sha: str) -> str:
     )
     setup_body = rk.join(
         [
-            rk.tag(
-                "p",
+            prose(
                 Raw(
                     f"Each run draws {m['n_players']} players with hidden skills, then plays "
                     f"{m['budget']:,} simulated matches. A rating system sees only who won, and "
@@ -772,8 +812,7 @@ def build(results: dict[str, Any], res_sha: str) -> str:
                 ),
             ),
             params,
-            rk.tag(
-                "p",
+            prose(
                 Raw(
                     "Because the same seed gives the same players and outcome stream to every "
                     "condition, "
@@ -802,12 +841,12 @@ def build(results: dict[str, Any], res_sha: str) -> str:
         lead,
         rk.variants(
             tau_chart(d, "sys-d", 1000, 400, ["elo", "glicko2", "bradley_terry"]),
-            tau_chart(d, "sys-t", 640, 340, ["elo", "glicko2", "bradley_terry"]),
-            tau_chart(d, "sys-p", 300, 280, ["elo", "glicko2", "bradley_terry"]),
+            tau_chart(d, "sys-t", 640, 340, ["elo", "glicko2", "bradley_terry"], 2),
+            tau_chart(d, "sys-p", 300, 280, ["elo", "glicko2", "bradley_terry"], 4),
         ),
         Raw(
             f"Mean Kendall τ over {n_runs}, random pairs, with the 95% normal band of the mean "
-            "(±1.96 standard "
+            f"(±{z95()} standard "
             "errors across runs). Simulated outcomes follow the Bradley–Terry model, so its fit "
             "is the "
             "correctly specified one here; that advantage may shrink on real "
@@ -832,8 +871,7 @@ def build(results: dict[str, Any], res_sha: str) -> str:
     systems_body = rk.join(
         [
             fig1,
-            rk.tag(
-                "p",
+            prose(
                 Raw(
                     "Elo nudges two ratings after each match by a fixed step. Glicko-2 also tracks "
                     "how "
@@ -897,8 +935,7 @@ def build(results: dict[str, Any], res_sha: str) -> str:
     )
     flat = d["flat"]
     pair_text = [
-        rk.tag(
-            "p",
+        prose(
             Raw(
                 "Information gain picks the pair whose result would shrink Glicko-2's total "
                 "uncertainty the most; for Glicko-2 that amount is known before the match is "
@@ -910,8 +947,7 @@ def build(results: dict[str, Any], res_sha: str) -> str:
     ]
     if flat and d["crossing"].get("random") and d["crossing"].get(SUBJECT_STRATEGY):
         pair_text.append(
-            rk.tag(
-                "p",
+            prose(
                 Raw(
                     f"Where the mean τ curve first crosses {d['target']} is a fragile summary: "
                     "random pairing's mean "
@@ -946,8 +982,7 @@ def build(results: dict[str, Any], res_sha: str) -> str:
     ]
     cal_body = rk.join(
         [
-            rk.tag(
-                "p",
+            prose(
                 Raw(
                     "Before each match, each system predicts the chance that one player wins. "
                     "Scored over "
@@ -981,19 +1016,19 @@ def build(results: dict[str, Any], res_sha: str) -> str:
         for q, k, dig in (
             ("Rating", "rating", 2),
             ("Rating deviation", "rd", 2),
-            ("Volatility", "volatility", 5),
+            ("Volatility", "volatility", 6),
         )
     ]
+    gx = glickman_inputs()
     glicko_body = rk.join(
         [
-            rk.tag(
-                "p",
+            prose(
                 Raw(
                     "Glicko-2 is written from Glickman's paper and checked against its worked "
-                    "example: a "
-                    "1500-rated player (RD 200, volatility 0.06, system constant 0.5) beats a 1400 "
-                    "and loses to "
-                    "a 1550 and a 1700. The code matches the printed values to within "
+                    f"example: a {gx['player'][0]}-rated player (RD {gx['player'][1]}, volatility "
+                    f"{gx['player'][2]}, system constant {gx['tau']}) beats a {gx['opponents'][0]} "
+                    f"and loses to a {gx['opponents'][1]} and a {gx['opponents'][2]}. The code "
+                    "matches the printed values to within "
                     f"{d['ex_gap']:.2f} rating "
                     f"points; the paper rounds its intermediate steps.{R('E6')}"
                 ),

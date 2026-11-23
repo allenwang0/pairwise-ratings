@@ -84,9 +84,7 @@ def kit_file(name: str) -> str:
     path = KIT / name
     if not path.exists():
         sys.exit(f"{path} missing; vendor report-kit with sync-kit.sh site")
-    # A literal "</script" inside an inlined script (the kit's usage comment has one) would end
-    # the <script> element early.
-    return path.read_text().replace("</script", "<\\/script")
+    return path.read_text()
 
 
 def versions() -> dict[str, str]:
@@ -389,7 +387,7 @@ def build(results: dict[str, Any]) -> str:
   <p class="conditions"><span class="key">Simulated players</span><span>Pair rules tested with
   Glicko-2 only</span><span>{players} players</span><span>{seeds} runs per condition</span></p>
   <p class="hero-line">{esc(hero_line)}</p>
-  <figure class="hero-fig" aria-labelledby="hero-cap">
+  <figure class="figure hero-fig" aria-labelledby="hero-cap">
     <div id="c-hero"></div>
     <figcaption id="hero-cap">Comparisons needed to reach Kendall τ {target} (fewer is better).
     “Mean curve” is where the {seeds}-run average crosses {target}; “median run” is the median
@@ -413,12 +411,12 @@ def build(results: dict[str, Any]) -> str:
     aria-checked="true" data-value="chart">Chart</button><button role="radio"
     aria-checked="false" data-value="table">Table</button></div></div>
     <div id="c-strategies"></div><div id="t-strategies" hidden></div>
-  </figure>
   <figcaption>Kendall τ: the share of player pairs in the right order, rescaled so 1 is the true
   order and 0 is chance. The y axis starts at {Y_FLOOR} and the x axis at {x[start]:,}, where
   every curve is above {Y_FLOOR}; the table has every checkpoint. Pair rules: info gain picks
   {RULES["info_gain"]}; closest, {RULES["closest"]}; uncertainty,
   {RULES["uncertainty"]}.</figcaption>
+  </figure>
   <p class="caveat"><b>An average curve, not a typical run.</b> The {
         pct(mean_save) if mean_save is not None else "gap"
     } is read where two averaged curves cross {target}. Runs that stall pull
@@ -449,12 +447,12 @@ def build(results: dict[str, Any]) -> str:
       stroke="var(--series-1)" stroke-width="2"/></svg>Where the mean curve crosses</span>
     </div>
     <div id="c-reach"></div><div id="t-reach" hidden></div>
-  </figure>
   <figcaption>The first four rows use Glicko-2 ratings; the last two use random pairs with
   another rater. Percentiles count only runs that reached {target} within {budget:,}
   comparisons; the table gives how many did not. Checkpoints are every
   {step} comparisons, so values are rounded up to the next
   checkpoint. Rows without a ring never reach {target} on the mean curve.</figcaption>
+  </figure>
 </section>
 
 <section class="s wrap" id="systems" aria-labelledby="h-systems">
@@ -469,9 +467,9 @@ def build(results: dict[str, Any]) -> str:
     aria-checked="true" data-value="chart">Chart</button><button role="radio"
     aria-checked="false" data-value="table">Table</button></div></div>
     <div id="c-systems"></div><div id="t-systems" hidden></div>
-  </figure>
   <figcaption>Same runs and axes as the pair-rule chart. The Glicko-2 line here is the random
   pairs line there.</figcaption>
+  </figure>
 </section>
 
 <section class="s wrap" id="calibration" aria-labelledby="h-calibration">
@@ -552,7 +550,7 @@ make report    # writes site/index.html</code></pre></div>
 </section>
 </main>
 <footer><div class="wrap"><span><a href="{HUB}">← Allen Wang</a><a href="{REPO}">Code ↗</a></span>
-<span>Data: results/results.json from commit <span class="mono">{esc(meta["sha"][:7])}</span>
+<span>Data from commit <span class="mono">{esc(meta["sha"][:7])}</span>
 · {esc(date)}</span></div></footer>
 <script type="application/json" id="rk-data">{json.dumps(data)}</script>
 """
@@ -565,10 +563,6 @@ make report    # writes site/index.html</code></pre></div>
 
 
 LOCAL_CSS = """
-:root{--series-3:#1baf7a;--series-4:#eda100}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--series-3:#199e70;
---series-4:#c98500}}
-:root[data-theme="dark"]{--series-3:#199e70;--series-4:#c98500}
 .hero-line{margin-top:24px;max-width:var(--measure);font-size:17px;color:var(--ink-1)}
 .hero-fig{margin-top:24px;max-width:760px}
 .hero-fig figcaption{margin-top:8px}
@@ -578,7 +572,6 @@ LOCAL_CSS = """
 .tablewrap td{white-space:normal}
 /* charts.js never draws narrower than 260 px and scales down below that; keep the plot >= 260 px
    at 320 px viewports so tick text stays >= 11 px. */
-@media (max-width:359px){.figure{padding-inline:12px}}
 #reproduce .tablewrap td{text-align:left}
 """
 

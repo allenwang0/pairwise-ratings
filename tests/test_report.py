@@ -63,12 +63,15 @@ def test_quick_run_writes_a_valid_card(quick_run: Path) -> None:
 def test_report_has_every_view_and_no_broken_numbers(quick_run: Path) -> None:
     page = (quick_run / "index.html").read_text()
     for section in ("systems", "strategies", "reach", "calibration", "glickman"):
-        assert f'<section id="{section}">' in page
-    assert page.count('class="takeaway"') == 5
+        assert re.search(rf'<section [^>]*id="{section}"', page)
+    assert page.count('takeaway">') == 5
     assert "simulated" in page
-    assert not re.search(r'="[^"]*(NaN|nan|inf)[^"]*"', page)
-    # Only inline assets: the page must work offline and leak no requests.
-    assert "http://" not in page and "https://" not in page
+    assert not re.search(r'="[^"]*\b(NaN|nan|inf|Infinity)\b[^"]*"', page)
+    # Only inline assets: the page must work offline and leak no requests. Plain links (back to
+    # the portfolio, to the code) are allowed; anything the browser would fetch is not.
+    assert not re.search(r'\bsrc="(https?:)?//', page)
+    assert not re.search(r'<link[^>]*href="(https?:)?//', page)
+    assert "url(http" not in page and "fetch(" not in page
 
 
 def test_committed_card_matches_committed_results() -> None:
@@ -105,8 +108,21 @@ def test_readme_numbers_match_results() -> None:
     results = json.loads((ROOT / "results" / "results.json").read_text())
     reach = {c["strategy"]: c["reach"]["mean_curve_crossing"] for c in results["strategies"]}
     info_gain, random = reach["info_gain"], reach["random"]
-    assert f"**{info_gain:,} comparisons instead of {random:,}**" in readme
-    assert f"{random - info_gain:,} fewer" in readme
+    strat = {c["strategy"]: c["reach"] for c in results["strategies"]}
+    bt = next(c["reach"] for c in results["systems"] if c["system"] == "bradley_terry")
+    assert (
+        f"**{info_gain:,} comparisons with information-gain pairing instead of {random:,}**"
+        in readme
+    )
+    saved = random - info_gain
+    assert f"{saved:,} ({saved / random:.0%}".replace("%", " %") in readme
+    # The headline is an average-curve crossing; the README must also give the typical run.
+    med_ig, med_rnd = strat["info_gain"]["median"], strat["random"]["median"]
+    typical = (med_rnd - med_ig) / med_rnd
+    assert f"{med_ig:.0f} vs {med_rnd:.0f} comparisons, about {typical * 100:.0f} %" in readme
+    assert f"after {bt['mean_curve_crossing']} comparisons" in readme
+    never = f"{strat['uncertainty']['never']} and {strat['closest']['never']} of 100 runs"
+    assert never in readme and f"against {strat['random']['never']} for random" in readme
     tau = {c["system"]: c["final_tau"] for c in results["systems"]}
     assert f"Bradley-Terry ranks best (rank agreement {tau['bradley_terry']:.3f}" in readme
     assert f"Elo worst ({tau['elo']:.3f})" in readme

@@ -24,7 +24,8 @@ STRATEGY_CONDITIONS = [
     ("glicko2", "closest"),
     ("glicko2", "info_gain"),
 ]
-CARD_SERIES = {"info_gain": "solid", "random": "dashed", "closest": "dots"}
+CARD_SERIES = {"bradley_terry": "solid", "glicko2": "dashed", "elo": "dots"}
+SYSTEM_NAMES = {"bradley_terry": "Bradley-Terry", "glicko2": "Glicko-2", "elo": "Elo"}
 # Glickman (2013), "Example of the Glicko-2 system", final step.
 PAPER_EXAMPLE = {"rating": 1464.06, "rd": 151.52, "volatility": 0.05999}
 
@@ -50,13 +51,16 @@ def run(args: tuple[str, str, Config, int]) -> dict[str, Any]:
 
 
 def card(results: dict[str, Any], command: str) -> dict[str, Any]:
+    """Portfolio card: the best rating system under random pairing, mean of all seeds.
+
+    The earlier headline (where the mean tau curve first crosses the target) moved by hundreds of
+    comparisons with tiny changes in the mean, so the card reports final accuracy instead.
+    """
     meta = results["meta"]
-    by_strategy = {c["strategy"]: c for c in results["strategies"]}
-    active = by_strategy["info_gain"]["reach"]["mean_curve_crossing"]
-    baseline = by_strategy["random"]["reach"]["mean_curve_crossing"]
-    if active is None or baseline is None:
-        sys.exit("mean tau never reached the target; raise --budget before writing card.json")
-    saved = baseline - active
+    by_system = {c["system"]: c for c in results["systems"]}
+    best = max(by_system.values(), key=lambda c: c["final_tau"])
+    worst = min(by_system.values(), key=lambda c: c["final_tau"])
+    best_name, worst_name = SYSTEM_NAMES[best["system"]], SYSTEM_NAMES[worst["system"]]
     x = meta["checkpoints"]
     return {
         "schema_version": 1,
@@ -69,14 +73,14 @@ def card(results: dict[str, Any], command: str) -> dict[str, Any]:
             f"{meta['n_players']} players, {meta['budget']} comparisons per run"
         ),
         "metric": {
-            "label": f"Comparisons saved to mean Kendall tau {TAU_TARGET}, info-gain vs random",
-            "value": saved,
-            "unit": "comparisons",
+            "label": f"Kendall tau, {best_name}, {meta['budget']} random comparisons",
+            "value": best["final_tau"],
+            "unit": "tau",
             "higher_is_better": True,
         },
         "takeaway": (
-            f"Info-gain pairing reaches mean Kendall tau {TAU_TARGET} after {active} comparisons; "
-            f"random pairing needs {baseline}."
+            f"{best_name} ranks simulated players best: Kendall tau "
+            f"{best['final_tau']:.3f} vs {worst['final_tau']:.3f} for {worst_name}."
         ),
         "chart": {
             "type": "line",
@@ -88,10 +92,10 @@ def card(results: dict[str, Any], command: str) -> dict[str, Any]:
             "y_scale": "linear",
             "series": [
                 {
-                    "name": name.replace("_", "-"),
+                    "name": SYSTEM_NAMES[name],
                     "style": style,
                     "points": [
-                        [xi, yi] for xi, yi in zip(x, by_strategy[name]["tau"]["mean"], strict=True)
+                        [xi, yi] for xi, yi in zip(x, by_system[name]["tau"]["mean"], strict=True)
                     ],
                 }
                 for name, style in CARD_SERIES.items()

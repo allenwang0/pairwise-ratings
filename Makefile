@@ -17,7 +17,7 @@ results:
 	uv run python scripts/run_experiments.py
 
 report:
-	uv run python scripts/build_report.py
+	uv run python scripts/build_report.py --readme README.md
 
 quick:
 	uv run python scripts/run_experiments.py --seeds 4 --players 8 --budget 300 --out build/quick --card build/quick/card.json --allow-dirty

@@ -5,11 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # build_report.py names the commit that last changed results/
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.11.32"
@@ -18,3 +23,29 @@ jobs:
       - run: make typecheck
       - run: make test
       - run: make quick
+      - name: Report kit matches its pinned hashes
+        run: python3 report-kit/check_kit.py
+      - name: Committed report and README highlights are current
+        run: |
+          make report
+          git diff --exit-code -- site README.md
+      # Pages publishes site/ as committed: the report built from the committed
+      # results/results.json (100 seeded runs), never a fresh CI run.
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          path: site
+
+  deploy-pages:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check]
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
